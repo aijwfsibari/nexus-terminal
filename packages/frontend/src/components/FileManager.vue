@@ -559,6 +559,7 @@ const handleItemDblClick = (item: FileListItem) => {
 // --- 移动端长按弹出右键菜单 ---
 const longPressItem = ref<FileListItem | null>(null); // 正在长按的文件项（用于高亮）
 let longPressTimer: number | null = null;
+let longPressTriggered = false; // 标记是否已触发长按（用于在 touchend 阻止 click）
 const LONG_PRESS_DURATION = 600; // ms
 
 const clearLongPressTimer = () => {
@@ -572,11 +573,12 @@ const clearLongPressTimer = () => {
 const handleRowTouchStart = (event: TouchEvent, item: FileListItem) => {
   if (!props.isMobile) return;
   clearLongPressTimer();
-  event.preventDefault();
+  longPressTriggered = false;
   longPressItem.value = item;
   const touch = event.touches[0];
   longPressTimer = window.setTimeout(() => {
     longPressTimer = null;
+    longPressTriggered = true; // 标记长按已触发
     // 构造一个 MouseEvent 传给 showContextMenu，使菜单出现在手指位置
     const fakeEvent = new MouseEvent('contextmenu', {
       bubbles: true,
@@ -590,12 +592,18 @@ const handleRowTouchStart = (event: TouchEvent, item: FileListItem) => {
   }, LONG_PRESS_DURATION);
 };
 
-const handleRowTouchEnd = () => {
+const handleRowTouchEnd = (event: TouchEvent) => {
+  if (longPressTriggered) {
+    // 长按已触发右键菜单，阻止后续 click 事件（避免菜单打开后页面卡死）
+    event.preventDefault();
+    longPressTriggered = false;
+  }
   clearLongPressTimer();
 };
 
 const handleRowTouchMove = () => {
   // 手指移动说明不是长按，取消计时器
+  longPressTriggered = false;
   clearLongPressTimer();
 };
 
@@ -2044,8 +2052,8 @@ const handleOpenEditorClick = () => {
                 @click="handleItemClick($event, item, props.isMobile && isMultiSelectMode)"
                 @dblclick="handleItemDblClick(item)"
                 @touchstart="handleRowTouchStart($event, item)"
-                @touchend="handleRowTouchEnd"
-                @touchcancel="handleRowTouchEnd"
+                @touchend="handleRowTouchEnd($event)"
+                @touchcancel="handleRowTouchEnd($event)"
                 @touchmove="handleRowTouchMove"
                 class="transition-colors duration-150 select-none"
                 :class="[

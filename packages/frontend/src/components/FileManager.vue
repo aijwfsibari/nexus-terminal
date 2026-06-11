@@ -572,6 +572,7 @@ const clearLongPressTimer = () => {
 const handleRowTouchStart = (event: TouchEvent, item: FileListItem) => {
   if (!props.isMobile) return;
   clearLongPressTimer();
+  event.preventDefault();
   longPressItem.value = item;
   const touch = event.touches[0];
   longPressTimer = window.setTimeout(() => {
@@ -2042,7 +2043,7 @@ const handleOpenEditorClick = () => {
                 :draggable="item.filename !== '..'" @dragstart="handleDragStart(item)" @dragend="handleDragEnd"
                 @click="handleItemClick($event, item, props.isMobile && isMultiSelectMode)"
                 @dblclick="handleItemDblClick(item)"
-                @touchstart.passive="handleRowTouchStart($event, item)"
+                @touchstart="handleRowTouchStart($event, item)"
                 @touchend="handleRowTouchEnd"
                 @touchcancel="handleRowTouchEnd"
                 @touchmove="handleRowTouchMove"

@@ -529,6 +529,7 @@ const {
   selectedItems, // 使用 Composable 返回的 selectedItems
   lastClickedIndex, // 获取 lastClickedIndex 以传递给 ContextMenu
   handleItemClick: originalHandleItemClick, // 使用 Composable 返回的 handleItemClick
+  handleItemDblClick: originalHandleItemDblClick, // 双击打开文件
   clearSelection, // 获取清空选择的方法
 } = useFileManagerSelection({
   // 传递当前显示的列表 (已排序和过滤)
@@ -547,6 +548,54 @@ const handleItemClick = (event: MouseEvent, item: FileListItem, forceMultiSelect
     return;
   }
   originalHandleItemClick(event, item);
+};
+
+// 双击打开文件（移动端多选模式下忽略）
+const handleItemDblClick = (item: FileListItem) => {
+  if (props.isMobile && isMultiSelectMode.value) return;
+  originalHandleItemDblClick(item);
+};
+
+// --- 移动端长按弹出右键菜单 ---
+const longPressItem = ref<FileListItem | null>(null); // 正在长按的文件项（用于高亮）
+let longPressTimer: number | null = null;
+const LONG_PRESS_DURATION = 600; // ms
+
+const clearLongPressTimer = () => {
+  if (longPressTimer !== null) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+  longPressItem.value = null;
+};
+
+const handleRowTouchStart = (event: TouchEvent, item: FileListItem) => {
+  if (!props.isMobile) return;
+  clearLongPressTimer();
+  longPressItem.value = item;
+  const touch = event.touches[0];
+  longPressTimer = window.setTimeout(() => {
+    longPressTimer = null;
+    // 构造一个 MouseEvent 传给 showContextMenu，使菜单出现在手指位置
+    const fakeEvent = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+    });
+    showContextMenu(fakeEvent, item);
+    // 高亮会因 showContextMenu 选中该项而自然消失，手动清除 longPressItem
+    longPressItem.value = null;
+  }, LONG_PRESS_DURATION);
+};
+
+const handleRowTouchEnd = () => {
+  clearLongPressTimer();
+};
+
+const handleRowTouchMove = () => {
+  // 手指移动说明不是长按，取消计时器
+  clearLongPressTimer();
 };
 
 // +++ 计算属性：获取选中的完整文件对象列表 +++
@@ -1013,7 +1062,7 @@ const {
   currentPath: computed(() => currentSftpManager.value?.currentPath.value ?? '/'),
   fileListContainerRef: fileListContainerRef,
   // 当 Enter 键按下时，模拟鼠标单击
-  onEnterPress: (item) => handleItemClick(new MouseEvent('click'), item),
+  onEnterPress: (item) => item.attrs.isFile ? handleItemDblClick(item) : handleItemClick(new MouseEvent('click'), item),
 });
 
 
@@ -1966,6 +2015,11 @@ const handleOpenEditorClick = () => {
                 :key="item.filename"
                 :draggable="item.filename !== '..'" @dragstart="handleDragStart(item)" @dragend="handleDragEnd"
                 @click="handleItemClick($event, item, props.isMobile && isMultiSelectMode)"
+                @dblclick="handleItemDblClick(item)"
+                @touchstart.passive="handleRowTouchStart($event, item)"
+                @touchend="handleRowTouchEnd"
+                @touchcancel="handleRowTouchEnd"
+                @touchmove="handleRowTouchMove"
                 class="transition-colors duration-150 select-none"
                 :class="[
                     { 'cursor-pointer': item.attrs.isDirectory || item.attrs.isFile },
@@ -1992,7 +2046,7 @@ const handleOpenEditorClick = () => {
                 ]"
                 :style="{ fontSize: `calc(1.1em * max(0.85, var(--row-size-multiplier) * 0.5 + 0.5))` }"></i>
               </td>
-              <td class="border-b border-border truncate align-middle" :class="{'font-medium': item.attrs.isDirectory}" :style="{ padding: `calc(0.4rem * var(--row-size-multiplier)) calc(0.8rem * var(--row-size-multiplier))`, fontSize: `calc(0.8rem * max(0.85, var(--row-size-multiplier) * 0.5 + 0.5))` }">{{ item.filename }}</td>
+              <td class="border-b border-border truncate align-middle" :class="{'font-medium': item.attrs.isDirectory}" :style="{ padding: `calc(0.4rem * var(--row-size-multiplier)) calc(0.8rem * var(--row-size-multiplier))`, fontSize: `calc(0.8rem * max(0.85, var(--row-size-multiplier) * 0.5 + 0.5))` }"><span :class="{ 'bg-primary text-white rounded px-1 transition-colors duration-150': props.isMobile && longPressItem?.filename === item.filename }">{{ item.filename }}</span></td>
               <td class="border-b border-border truncate align-middle" :class="[
                 selectedItems.has(item.filename) || (index + (currentSftpManager?.currentPath.value !== '/' ? 1 : 0) === selectedIndex) ? 'text-white' : 'text-text-secondary'
               ]" :style="{ padding: `calc(0.4rem * var(--row-size-multiplier)) calc(0.8rem * var(--row-size-multiplier))`, fontSize: `calc(0.72rem * max(0.85, var(--row-size-multiplier) * 0.5 + 0.5))` }">{{ item.attrs.isFile ? formatSize(item.attrs.size) : '' }}</td> 

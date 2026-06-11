@@ -943,17 +943,43 @@ const handleDecompress = (item: FileListItem) => {
 
 
 // +++ 复制路径到剪贴板 +++
-const handleCopyPath = async (item: FileListItem) => {
+const handleCopyPath = (item: FileListItem) => {
   if (!currentSftpManager.value) return;
   const fullPath = currentSftpManager.value.joinPath(currentSftpManager.value.currentPath.value, item.filename);
-  try {
-    await navigator.clipboard.writeText(fullPath);
-    // 可选：显示成功通知
-    console.log(`[FileManager ${props.sessionId}-${props.instanceId}] Copied path to clipboard: ${fullPath}`);
+
+  // 使用同步的 execCommand 方案：在菜单点击的同步调用栈内完成复制，
+  // 避免 async/await 导致焦点丢失，同时兼容 HTTP 非安全上下文（navigator.clipboard 不可用）
+  const syncCopy = (text: string): boolean => {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none;';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  };
+
+  if (syncCopy(fullPath)) {
+    console.log(`[FileManager ${props.sessionId}-${props.instanceId}] Copied path: ${fullPath}`);
     uiNotificationsStore.showSuccess(t('fileManager.notifications.pathCopied', 'Path copied to clipboard'));
-  } catch (err) {
-    console.error(`[FileManager ${props.sessionId}-${props.instanceId}] Failed to copy path: `, err);
-    // 可选：显示错误通知
+    return;
+  }
+
+  // execCommand 不可用时（极少数情况）才走异步 Clipboard API
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(fullPath).then(() => {
+      uiNotificationsStore.showSuccess(t('fileManager.notifications.pathCopied', 'Path copied to clipboard'));
+    }).catch((err) => {
+      console.error(`[FileManager ${props.sessionId}-${props.instanceId}] Failed to copy path: `, err);
+      uiNotificationsStore.showError(t('fileManager.errors.copyPathFailed', 'Failed to copy path'));
+    });
+  } else {
     uiNotificationsStore.showError(t('fileManager.errors.copyPathFailed', 'Failed to copy path'));
   }
 };

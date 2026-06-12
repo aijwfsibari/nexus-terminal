@@ -95,6 +95,13 @@ export function useFileManagerContextMenu(options: UseFileManagerContextMenuOpti
 
   const showContextMenu = (event: MouseEvent, item?: FileListItem) => {
     event.preventDefault();
+    // 确保上一次菜单状态完全清理，防止监听器堆积
+    if (contextMenuVisible.value) {
+      contextMenuVisible.value = false;
+      contextMenuItems.value = [];
+      contextTargetItem.value = null;
+      document.removeEventListener('click', hideContextMenu, { capture: true });
+    }
     const targetItem = item || null;
 
     // Adjust selection based on right-click target (逻辑保持不变)

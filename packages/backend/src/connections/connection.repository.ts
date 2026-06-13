@@ -179,7 +179,7 @@ export const findFullConnectionById = async (id: number): Promise<FullConnection
                  // Let's assume ConnectionBase should NOT have it to keep it truly base.
                  // The caller using findConnectionByName might not expect jump_chain.
                  // If service needs it, it should use a find method that returns a richer type.
-             } as ConnectionBase; // jump_chain is not part of ConnectionBase anymore
+             } as unknown as ConnectionBase; // jump_chain is not part of ConnectionBase anymore
          }
          return null; // Ensure null is returned if row is null
      } catch (err: any) {

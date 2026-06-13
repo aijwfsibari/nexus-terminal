@@ -198,7 +198,7 @@ export const createConnection = async (data: Omit<FullConnectionData, 'id' | 'cr
     const now = Math.floor(Date.now() / 1000);
     const sql = `
         INSERT INTO connections (name, type, host, port, username, auth_method, encrypted_password, encrypted_private_key, encrypted_passphrase, proxy_id, proxy_type, ssh_key_id, notes, jump_chain, startup_command, sftp_sudo_enabled, encrypted_sftp_sudo_password, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?)`;
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     
     const jumpChainStringified = (data.jump_chain && data.jump_chain.length > 0) ? JSON.stringify(data.jump_chain) : null;
     console.log(`[Repository:createConnection] jump_chain input: ${JSON.stringify(data.jump_chain)}, stringified to: ${jumpChainStringified}`);

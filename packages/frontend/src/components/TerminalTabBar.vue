@@ -486,8 +486,7 @@ onBeforeUnmount(() => {
         </button>
     </div>
     <!-- Connection List Popup -->
-    <Teleport to="body">
-    <div v-if="showConnectionListPopup" class="fixed inset-0 bg-overlay flex justify-center items-center z-50 p-4" @click.self="togglePopup">
+    <div v-if="showConnectionListPopup" class="fixed inset-x-0 top-0 bg-overlay flex justify-center items-center z-50 p-4" :style="{ height: 'var(--visual-viewport-height, 100dvh)' }" @click.self="togglePopup">
       <div class="bg-background text-foreground p-6 rounded-lg shadow-xl border border-border w-full max-w-md max-h-[80vh] flex flex-col relative">
         <button class="absolute top-2 right-2 p-1 text-text-secondary hover:text-foreground" @click="togglePopup">
            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -506,7 +505,6 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
-    </Teleport>
     <!-- +++ Context Menu Instance (Ensure it's present) +++ -->
     <TabBarContextMenu
       :visible="contextMenuVisible"

@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n';
 import { storeToRefs } from 'pinia';
 import { useLayoutStore, type LayoutNode } from '../stores/layout.store'; // +++ Import LayoutNode +++
 import { useDeviceDetection } from '../composables/useDeviceDetection';
+import { useVisualViewport } from '../composables/useVisualViewport';
 import { useConnectionsStore, type ConnectionInfo } from '../stores/connections.store';
 import AddConnectionFormComponent from '../components/AddConnectionForm.vue';
 import TerminalTabBar from '../components/TerminalTabBar.vue';
@@ -37,6 +38,7 @@ const commandHistoryStore = useCommandHistoryStore();
 const connectionsStore = useConnectionsStore(); 
 const { isHeaderVisible } = storeToRefs(layoutStore);
 const { isMobile } = useDeviceDetection();
+const { isKeyboardOpen, keyboardHeight } = useVisualViewport();
 
 // --- 从 Store 获取响应式状态和 Getters ---
 const { sessionTabsWithStatus, activeSessionId, activeSession, isRdpModalOpen, rdpConnectionInfo, isVncModalOpen, vncConnectionInfo } = storeToRefs(sessionStore); // 使用 storeToRefs 获取 RDP 和 VNC 状态
@@ -741,7 +743,10 @@ const closeFileManagerModal = () => {
 
     <!-- --- 移动端布局 --- -->
     <template v-else>
-      <div class="mobile-content-area">
+      <div
+        class="mobile-content-area"
+        :style="isKeyboardOpen ? { height: `calc(100dvh - var(--header-height, 0px) - ${keyboardHeight}px)` } : {}"
+      >
         <LayoutRenderer
           v-if="activeSessionId && mobileLayoutNodeForTerminal"
           :layout-node="mobileLayoutNodeForTerminal"
@@ -794,8 +799,7 @@ const closeFileManagerModal = () => {
     <!-- VNC Modal is now rendered in App.vue -->
 
     <!-- FileManager Modal Container -->
-    <Teleport to="body">
-    <div v-show="showFileManagerModal && currentFileManagerSessionId && fileManagerPropsMap.get(currentFileManagerSessionId)" class="fixed inset-0 flex items-center justify-center z-50 p-4" :style="{ backgroundColor: 'var(--overlay-bg-color)' }" @click.self="closeFileManagerModal">
+    <div v-show="showFileManagerModal && currentFileManagerSessionId && fileManagerPropsMap.get(currentFileManagerSessionId)" class="fixed inset-x-0 top-0 flex items-center justify-center z-50 p-4" :style="{ backgroundColor: 'var(--overlay-bg-color)', height: 'var(--visual-viewport-height, 100dvh)' }" @click.self="closeFileManagerModal">
       <div class="bg-background rounded-lg shadow-xl w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden border border-border">
         <div class="flex justify-between items-center p-3 border-b border-border flex-shrink-0 bg-header">
           <h2 class="text-lg font-semibold text-foreground">{{ t('fileManager.modalTitle', '文件管理器') }} ({{ currentFileManagerSessionId ? (sessionStore.sessions.get(currentFileManagerSessionId)?.connectionName || currentFileManagerSessionId) : '未知会话' }})</h2>
@@ -819,7 +823,6 @@ const closeFileManagerModal = () => {
         </div>
       </div>
     </div>
-    </Teleport>
 
   </div>
 </template>

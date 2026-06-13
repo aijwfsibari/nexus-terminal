@@ -99,8 +99,7 @@ const handleHostIconMouseLeave = () => {
   <!-- Host Tooltip is managed by AddConnectionFormBasicInfo for its specific host input,
        but if there was a general tooltip at this level, Teleport would be here.
        The original Teleport for host tooltip is removed as it's now encapsulated. -->
-  <Teleport to="body">
-  <div class="fixed inset-0 bg-overlay flex justify-center items-center z-50 p-4"> <!-- Overlay -->
+  <div class="fixed inset-x-0 top-0 bg-overlay flex justify-center items-center z-50 p-4" :style="{ height: 'var(--visual-viewport-height, 100dvh)' }"> <!-- Overlay -->
     <div class="bg-background text-foreground p-6 rounded-lg shadow-xl border border-border w-full max-w-2xl max-h-[90vh] flex flex-col"> <!-- Form Panel -->
       <h3 class="text-xl font-semibold text-center mb-6 flex-shrink-0">{{ formTitle }}</h3> <!-- Title -->
       <form @submit.prevent="handleSubmit" class="flex-grow overflow-y-auto pr-2 space-y-6"> <!-- Form with scroll and spacing -->
@@ -224,8 +223,7 @@ const handleHostIconMouseLeave = () => {
       </div> <!-- End Form Actions -->
 
     </div> <!-- End Form Panel -->
-  </div>
-  </Teleport> <!-- End Overlay -->
+  </div> <!-- End Overlay -->
 </template>
 
 <!-- Scoped styles removed, now using Tailwind utility classes -->

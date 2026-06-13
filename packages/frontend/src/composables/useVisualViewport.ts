@@ -1,22 +1,94 @@
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, watch, onMounted, onUnmounted, type Ref } from 'vue';
 
 /**
  * 监听 visualViewport，解决 Firefox 移动端软键盘弹出时
  * fixed 定位元素被键盘遮挡的问题。
  *
- * 同时，当页面内容（例如 SSH 终端）在横向上超出屏幕宽度时，
- * Firefox 移动端会把"布局视口 (layout viewport)"撑宽并整体缩放显示页面，
- * 这会导致使用 100vw / inset-x-0 / w-full 的浮窗按照被撑宽后的
- * 布局视口计算尺寸和位置，从而表现为"电脑版浮窗"溢出屏幕。
+ * === 核心问题 ===
+ * 在移动端 Firefox 中，只要页面里任何一个元素（终端 xterm 画布、
+ * 弹窗、Toast 通知、右键菜单……任何一个都行）在某一时刻的渲染尺寸
+ * 或定位超出了手机屏幕宽/高，`<html>`/`<body>` 的"文档尺寸"
+ * 就会被撑大，浏览器的"布局视口 (layout viewport)"也会随之被撑宽/撑高，
+ * 整个页面会被缩小显示（可以双指捏合放大看到一个"桌面尺寸"的区域）。
  *
- * window.visualViewport 始终反映用户真实可见的视口（宽度、高度、
- * 以及相对于布局视口的偏移量 offsetLeft/offsetTop），不受内容横向溢出影响。
- * 这里将其同步到 CSS 变量上，供所有浮窗统一使用，
- * 以保证浮窗始终按照"手机版"（即真实可见视口）显示，不会溢出屏幕。
+ * 一旦布局视口被撑大，**之后所有**使用 100vw / 100vh / 100% / vw / vh /
+ * fixed 定位的元素（不止是 SSH 终端相关的浮窗，还包括各种全局 Toast、
+ * 右键菜单、下拉菜单等），都会按这个被撑大的"桌面尺寸"布局视口来计算
+ * 尺寸和位置，于是表现为"电脑版"的大窗口/通知，且需要双指捏合缩小
+ * 才能看到。
+ *
+ * === 解决方案 ===
+ * 不再逐个修复每一个浮窗/通知组件，而是从根上锁死整个文档
+ * （<html> 与 <body>）的渲染尺寸，使其始终等于
+ * window.visualViewport 反映的"真实可见视口"大小，并设置
+ * overflow: hidden，禁止文档被任何子元素撑大。
+ * 这样布局视口永远等于手机屏幕大小，所有基于 vw/vh/100%/fixed
+ * 的浮窗、通知、菜单都会自动按手机屏幕大小显示，无需双指捏合，
+ * 也无需逐个适配。
+ *
+ * 同时仍然将视口宽高、以及视口相对于布局视口的偏移量
+ * （offsetLeft/offsetTop，用于兼容极少数仍可能发生缩放/平移的情况）
+ * 同步到 CSS 变量 --visual-viewport-width / height / left / top 上，
+ * 供需要的浮窗作为兜底使用。
+ *
+ * @param lockDocumentSize 是否启用"锁死文档尺寸"。通常传入
+ *   `isMobile`（一个响应式 ref），表示仅在移动端启用该锁定，
+ *   桌面端保持浏览器原生行为不变。
  */
-export function useVisualViewport() {
+export function useVisualViewport(lockDocumentSize?: Ref<boolean> | boolean) {
   const keyboardHeight = ref(0);
   const isKeyboardOpen = ref(false);
+
+  const isLockEnabled = (): boolean => {
+    if (lockDocumentSize === undefined) return false;
+    return typeof lockDocumentSize === 'boolean' ? lockDocumentSize : lockDocumentSize.value;
+  };
+
+  // 应用/移除文档尺寸锁定
+  const applyDocumentLock = (vvWidth: number, vvHeight: number) => {
+    const htmlStyle = document.documentElement.style;
+    const bodyStyle = document.body.style;
+
+    if (isLockEnabled()) {
+      // 用 !important 强制锁死，防止任何子元素（终端/弹窗/通知）撑大文档
+      htmlStyle.setProperty('width', `${vvWidth}px`, 'important');
+      htmlStyle.setProperty('height', `${vvHeight}px`, 'important');
+      htmlStyle.setProperty('max-width', `${vvWidth}px`, 'important');
+      htmlStyle.setProperty('max-height', `${vvHeight}px`, 'important');
+      htmlStyle.setProperty('overflow', 'hidden', 'important');
+
+      bodyStyle.setProperty('width', `${vvWidth}px`, 'important');
+      bodyStyle.setProperty('height', `${vvHeight}px`, 'important');
+      bodyStyle.setProperty('max-width', `${vvWidth}px`, 'important');
+      bodyStyle.setProperty('max-height', `${vvHeight}px`, 'important');
+      bodyStyle.setProperty('overflow', 'hidden', 'important');
+      bodyStyle.setProperty('position', 'fixed', 'important');
+      bodyStyle.setProperty('top', '0', 'important');
+      bodyStyle.setProperty('left', '0', 'important');
+    } else {
+      removeDocumentLock();
+    }
+  };
+
+  const removeDocumentLock = () => {
+    const htmlStyle = document.documentElement.style;
+    const bodyStyle = document.body.style;
+
+    htmlStyle.removeProperty('width');
+    htmlStyle.removeProperty('height');
+    htmlStyle.removeProperty('max-width');
+    htmlStyle.removeProperty('max-height');
+    htmlStyle.removeProperty('overflow');
+
+    bodyStyle.removeProperty('width');
+    bodyStyle.removeProperty('height');
+    bodyStyle.removeProperty('max-width');
+    bodyStyle.removeProperty('max-height');
+    bodyStyle.removeProperty('overflow');
+    bodyStyle.removeProperty('position');
+    bodyStyle.removeProperty('top');
+    bodyStyle.removeProperty('left');
+  };
 
   const update = () => {
     const vv = window.visualViewport;
@@ -25,7 +97,7 @@ export function useVisualViewport() {
     const vvWidth = vv ? Math.round(vv.width) : window.innerWidth;
     const vvHeight = vv ? Math.round(vv.height) : window.innerHeight;
 
-    // 视口相对于布局视口的偏移量（页面被横向/纵向撑宽并缩放时会非 0）
+    // 视口相对于布局视口的偏移量（兜底用）
     const vvLeft = vv ? Math.round(vv.offsetLeft) : 0;
     const vvTop = vv ? Math.round(vv.offsetTop) : 0;
 
@@ -41,13 +113,18 @@ export function useVisualViewport() {
       isKeyboardOpen.value = false;
     }
 
-    // --- 同步 CSS 变量，供所有浮窗统一使用 ---
+    // --- 同步 CSS 变量（兜底，供单个浮窗使用） ---
     const root = document.documentElement.style;
     root.setProperty('--visual-viewport-height', `${vvHeight}px`);
     root.setProperty('--visual-viewport-width', `${vvWidth}px`);
     root.setProperty('--visual-viewport-left', `${vvLeft}px`);
     root.setProperty('--visual-viewport-top', `${vvTop}px`);
+
+    // --- 锁死文档尺寸（核心修复） ---
+    applyDocumentLock(vvWidth, vvHeight);
   };
+
+  let stopWatchLock: (() => void) | null = null;
 
   onMounted(() => {
     // 初始化默认值（确保在 visualViewport 不可用的环境下也有合理的回退值）
@@ -60,11 +137,17 @@ export function useVisualViewport() {
     if (window.visualViewport) {
       window.visualViewport.addEventListener('resize', update);
       window.visualViewport.addEventListener('scroll', update);
-      update();
     } else {
-      // 没有 visualViewport API 时，至少在窗口尺寸变化时更新一次
       window.addEventListener('resize', update);
-      update();
+    }
+    update();
+
+    // 如果 lockDocumentSize 是响应式 ref，监听其变化（例如设备旋转、
+    // 窗口尺寸跨越移动端/桌面端断点时），动态加锁/解锁
+    if (lockDocumentSize !== undefined && typeof lockDocumentSize !== 'boolean') {
+      stopWatchLock = watch(lockDocumentSize, () => {
+        update();
+      });
     }
   });
 
@@ -75,6 +158,11 @@ export function useVisualViewport() {
     } else {
       window.removeEventListener('resize', update);
     }
+    if (stopWatchLock) {
+      stopWatchLock();
+    }
+    // 组件卸载时务必恢复文档原始样式，避免影响其他视图
+    removeDocumentLock();
   });
 
   return { keyboardHeight, isKeyboardOpen };

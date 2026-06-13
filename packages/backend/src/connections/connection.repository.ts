@@ -25,10 +25,9 @@ interface ConnectionBase {
 }
 
 // ConnectionWithTagsRow implicitly includes 'type' and 'ssh_key_id' via ConnectionBase
-interface ConnectionWithTagsRow extends ConnectionBase { // This will no longer cause error if ConnectionBase has no jump_chain
+interface ConnectionWithTagsRow extends Omit<ConnectionBase, 'sftp_sudo_enabled'> {
     tag_ids_str: string | null;
-    jump_chain: string | null; // Stored as JSON string in DB
-    sftp_sudo_enabled: number; // SQLite stores as 0/1
+    jump_chain: string | null;sftp_sudo_enabled: number; // SQLite stores as 0/1
 }
 
 // ConnectionWithTags implicitly includes 'type' and 'ssh_key_id' via ConnectionBase
@@ -91,9 +90,9 @@ export const findAllConnectionsWithTags = async (): Promise<ConnectionWithTags[]
             return {
                 ...restOfRow,
                 tag_ids: row.tag_ids_str ? row.tag_ids_str.split(',').map(Number).filter(id => !isNaN(id)) : [],
-                jump_chain: jumpChainStr ? JSON.parse(jumpChainStr) as number[] : null
-                , sftp_sudo_enabled: row.sftp_sudo_enabled === 1 || (row.sftp_sudo_enabled as any) === true
-            } as ConnectionWithTags;
+                jump_chain: jumpChainStr ? JSON.parse(jumpChainStr) as number[] : null,
+                sftp_sudo_enabled: row.sftp_sudo_enabled === 1,
+            } as unknown as ConnectionWithTags;
         });
     } catch (err: any) {
         console.error('Repository: 查询连接列表时出错:', err.message);
@@ -122,9 +121,9 @@ export const findConnectionByIdWithTags = async (id: number): Promise<Connection
             return {
                 ...restOfRow,
                 tag_ids: row.tag_ids_str ? row.tag_ids_str.split(',').map(Number).filter(id => !isNaN(id)) : [],
-                jump_chain: jumpChainStr ? JSON.parse(jumpChainStr) as number[] : null
-                , sftp_sudo_enabled: row.sftp_sudo_enabled === 1 || (row.sftp_sudo_enabled as any) === true
-            } as ConnectionWithTags;
+                jump_chain: jumpChainStr ? JSON.parse(jumpChainStr) as number[] : null,
+                sftp_sudo_enabled: row.sftp_sudo_enabled === 1,
+            } as unknown as ConnectionWithTags;
         } else {
             return null;
         }

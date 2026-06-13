@@ -2,6 +2,19 @@ name: Docker Publish
 
 on:
   workflow_dispatch:
+    inputs:
+      build_frontend:
+        description: '编译 Frontend'
+        type: boolean
+        default: true
+      build_backend:
+        description: '编译 Backend'
+        type: boolean
+        default: true
+      build_remote_gateway:
+        description: '编译 Remote Gateway'
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -32,10 +45,10 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         id: manual
         run: |
-          echo "shared=true" >> "$GITHUB_OUTPUT"
-          echo "frontend=true" >> "$GITHUB_OUTPUT"
-          echo "backend=true" >> "$GITHUB_OUTPUT"
-          echo "remote_gateway=true" >> "$GITHUB_OUTPUT"
+          echo "shared=false" >> "$GITHUB_OUTPUT"
+          echo "frontend=${{ inputs.build_frontend }}" >> "$GITHUB_OUTPUT"
+          echo "backend=${{ inputs.build_backend }}" >> "$GITHUB_OUTPUT"
+          echo "remote_gateway=${{ inputs.build_remote_gateway }}" >> "$GITHUB_OUTPUT"
 
       - name: Detect changed paths
         if: github.event_name != 'workflow_dispatch'

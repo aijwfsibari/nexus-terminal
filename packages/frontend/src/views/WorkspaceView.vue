@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, computed, ref, shallowRef, type PropType } from 'vue';
+import { onMounted, onBeforeUnmount, computed, ref, shallowRef, type PropType, Teleport } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { storeToRefs } from 'pinia';
 import { useLayoutStore, type LayoutNode } from '../stores/layout.store'; // +++ Import LayoutNode +++
@@ -799,30 +799,52 @@ const closeFileManagerModal = () => {
     <!-- VNC Modal is now rendered in App.vue -->
 
     <!-- FileManager Modal Container -->
-    <div v-show="showFileManagerModal && currentFileManagerSessionId && fileManagerPropsMap.get(currentFileManagerSessionId)" class="fixed inset-x-0 top-0 flex items-center justify-center z-50 p-4" :style="{ backgroundColor: 'var(--overlay-bg-color)', height: 'var(--visual-viewport-height, 100dvh)' }" @click.self="closeFileManagerModal">
-      <div class="bg-background rounded-lg shadow-xl w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden border border-border">
-        <div class="flex justify-between items-center p-3 border-b border-border flex-shrink-0 bg-header">
-          <h2 class="text-lg font-semibold text-foreground">{{ t('fileManager.modalTitle', '文件管理器') }} ({{ currentFileManagerSessionId ? (sessionStore.sessions.get(currentFileManagerSessionId)?.connectionName || currentFileManagerSessionId) : '未知会话' }})</h2>
-          <button @click="closeFileManagerModal" class="text-text-secondary hover:text-foreground transition-colors">
-            <i class="fas fa-times text-xl"></i>
-          </button>
-        </div>
-        <div class="flex-grow overflow-hidden">
-          <template v-for="propsData in fileManagerPropsMap.values()" :key="`${propsData.sessionId}-${isMobile}`">
-            <div v-show="propsData.sessionId === currentFileManagerSessionId" class="h-full">
-              <FileManager
-                :session-id="propsData.sessionId"
-                :instance-id="propsData.instanceId"
-                :db-connection-id="propsData.dbConnectionId"
-                :ws-deps="propsData.wsDeps"
-                :is-mobile="isMobile"
-                class="h-full"
-              />
-            </div>
-          </template>
+    <!-- + 通过 Teleport 传送到 body，脱离当前组件可能存在的任何祖先层叠/包含块影响 -->
+    <!-- + 使用 --visual-viewport-* 变量（来自 useVisualViewport）而非 inset-x-0/100dvh，
+         确保在 SSH 终端撑宽布局视口后，浮窗依然按真实可见视口（手机版）定位和限宽，不会溢出屏幕 -->
+    <Teleport to="body">
+      <div
+        v-show="showFileManagerModal && currentFileManagerSessionId && fileManagerPropsMap.get(currentFileManagerSessionId)"
+        class="flex items-center justify-center z-50 p-4"
+        :style="{
+          position: 'fixed',
+          left: 'var(--visual-viewport-left, 0px)',
+          top: 'var(--visual-viewport-top, 0px)',
+          width: 'var(--visual-viewport-width, 100vw)',
+          height: 'var(--visual-viewport-height, 100dvh)',
+          boxSizing: 'border-box',
+          backgroundColor: 'var(--overlay-bg-color)'
+        }"
+        @click.self="closeFileManagerModal"
+      >
+        <div
+          class="bg-background rounded-lg shadow-xl w-full flex flex-col overflow-hidden border border-border"
+          style="max-width: min(56rem, 100%);
+                 height: min(85vh, calc(var(--visual-viewport-height, 100dvh) - 2rem));"
+        >
+          <div class="flex justify-between items-center p-3 border-b border-border flex-shrink-0 bg-header">
+            <h2 class="text-lg font-semibold text-foreground">{{ t('fileManager.modalTitle', '文件管理器') }} ({{ currentFileManagerSessionId ? (sessionStore.sessions.get(currentFileManagerSessionId)?.connectionName || currentFileManagerSessionId) : '未知会话' }})</h2>
+            <button @click="closeFileManagerModal" class="text-text-secondary hover:text-foreground transition-colors">
+              <i class="fas fa-times text-xl"></i>
+            </button>
+          </div>
+          <div class="flex-grow overflow-hidden">
+            <template v-for="propsData in fileManagerPropsMap.values()" :key="`${propsData.sessionId}-${isMobile}`">
+              <div v-show="propsData.sessionId === currentFileManagerSessionId" class="h-full">
+                <FileManager
+                  :session-id="propsData.sessionId"
+                  :instance-id="propsData.instanceId"
+                  :db-connection-id="propsData.dbConnectionId"
+                  :ws-deps="propsData.wsDeps"
+                  :is-mobile="isMobile"
+                  class="h-full"
+                />
+              </div>
+            </template>
+          </div>
         </div>
       </div>
-    </div>
+    </Teleport>
 
   </div>
 </template>
@@ -834,6 +856,8 @@ const closeFileManagerModal = () => {
   flex-direction: column;
   height: 100dvh; /* 使用动态视口高度 */
   overflow: hidden;
+  overflow-x: hidden; /* 防止终端等内容横向溢出撑宽整个文档/布局视口 */
+  max-width: 100vw;
   transition: height 0.3s ease; /* 可选：添加过渡效果 */
 }
 
@@ -857,6 +881,7 @@ const closeFileManagerModal = () => {
 .layout-renderer-wrapper {
   flex-grow: 1;
   width: 100%;
+  min-width: 0; /* 防止子元素（如终端）的 min-content 宽度撑宽该 flex 子项 */
   height: 100%;
   overflow: hidden;
 }
@@ -893,6 +918,7 @@ const closeFileManagerModal = () => {
   flex-direction: column; /* Stack elements vertically if needed */
   flex-grow: 1; /* Allow this area to take up remaining space */
   overflow: hidden; /* Prevent overflow */
+  min-width: 0; /* 防止终端等内容的 min-content 宽度撑宽该 flex 子项 */
   position: relative; /* Needed for potential absolute positioning inside */
   /* Remove desktop margins/borders */
   margin: 0;

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, PropType, onMounted, onBeforeUnmount, watch } from 'vue';
+import { ref, computed, PropType, onMounted, onBeforeUnmount, watch, Teleport } from 'vue';
 import draggable from 'vuedraggable';
 import { useI18n } from 'vue-i18n';
 import { useRoute } from 'vue-router';
@@ -486,25 +486,44 @@ onBeforeUnmount(() => {
         </button>
     </div>
     <!-- Connection List Popup -->
-    <div v-if="showConnectionListPopup" class="fixed inset-x-0 top-0 bg-overlay flex justify-center items-center z-50 p-4" :style="{ height: 'var(--visual-viewport-height, 100dvh)' }" @click.self="togglePopup">
-      <div class="bg-background text-foreground p-6 rounded-lg shadow-xl border border-border w-full max-w-md max-h-[80vh] flex flex-col relative">
-        <button class="absolute top-2 right-2 p-1 text-text-secondary hover:text-foreground" @click="togglePopup">
-           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-           </svg>
-        </button>
-        <h3 class="text-lg font-semibold text-center mb-4">{{ t('terminalTabBar.selectServerTitle') }}</h3>
-        <div class="flex-grow overflow-y-auto border border-border rounded">
-            <WorkspaceConnectionListComponent
-              @connect-request="handlePopupConnect"
-              @open-new-session="handlePopupConnect"
-              @request-add-connection="handleRequestAddFromPopup"
-              @request-edit-connection="handleRequestEditFromPopup"
-              class="popup-connection-list"
-            />
+    <!-- + 通过 Teleport 传送到 body，脱离当前组件可能存在的任何祖先层叠/包含块影响 -->
+    <!-- + 使用 --visual-viewport-* 变量（来自 useVisualViewport）而非 inset-x-0/w-full，
+         确保在 SSH 终端撑宽布局视口后，浮窗依然按真实可见视口（手机版）定位和限宽，不会溢出屏幕 -->
+    <Teleport to="body">
+      <div
+        v-if="showConnectionListPopup"
+        class="bg-overlay flex justify-center items-center z-50 p-4"
+        style="position: fixed;
+               left: var(--visual-viewport-left, 0px);
+               top: var(--visual-viewport-top, 0px);
+               width: var(--visual-viewport-width, 100vw);
+               height: var(--visual-viewport-height, 100dvh);
+               box-sizing: border-box;"
+        @click.self="togglePopup"
+      >
+        <div
+          class="bg-background text-foreground p-6 rounded-lg shadow-xl border border-border w-full flex flex-col relative"
+          style="max-width: min(28rem, 100%);
+                 max-height: min(80vh, calc(var(--visual-viewport-height, 100dvh) - 2rem));"
+        >
+          <button class="absolute top-2 right-2 p-1 text-text-secondary hover:text-foreground" @click="togglePopup">
+             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+               <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+             </svg>
+          </button>
+          <h3 class="text-lg font-semibold text-center mb-4">{{ t('terminalTabBar.selectServerTitle') }}</h3>
+          <div class="flex-grow overflow-y-auto border border-border rounded">
+              <WorkspaceConnectionListComponent
+                @connect-request="handlePopupConnect"
+                @open-new-session="handlePopupConnect"
+                @request-add-connection="handleRequestAddFromPopup"
+                @request-edit-connection="handleRequestEditFromPopup"
+                class="popup-connection-list"
+              />
+          </div>
         </div>
       </div>
-    </div>
+    </Teleport>
     <!-- +++ Context Menu Instance (Ensure it's present) +++ -->
     <TabBarContextMenu
       :visible="contextMenuVisible"

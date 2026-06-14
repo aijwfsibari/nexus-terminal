@@ -1,0 +1,26 @@
+name: Cleanup GHCR
+
+on:
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+
+    permissions:
+      packages: write
+
+    strategy:
+      matrix:
+        package:
+          - nexus-terminal-backend
+          - nexus-terminal-frontend
+    
+    steps:
+      - uses: jenskeiner/ghcr-container-repository-cleanup-action@v1
+        with:
+          package: ${{ matrix.package }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          exclude-tags: '^latest$'
+          keep-n-tagged: 0
+          keep-n-untagged: 0

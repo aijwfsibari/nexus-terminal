@@ -99,8 +99,24 @@ const handleHostIconMouseLeave = () => {
   <!-- Host Tooltip is managed by AddConnectionFormBasicInfo for its specific host input,
        but if there was a general tooltip at this level, Teleport would be here.
        The original Teleport for host tooltip is removed as it's now encapsulated. -->
-  <div class="fixed inset-0 bg-overlay flex justify-center items-center z-50 p-4"> <!-- Overlay -->
-    <div class="bg-background text-foreground p-6 rounded-lg shadow-xl border border-border w-full max-w-2xl max-h-[90vh] flex flex-col"> <!-- Form Panel -->
+  <!-- 通过 Teleport 传送到 body，脱离当前组件可能存在的任何祖先层叠/包含块影响 -->
+  <!-- 使用 --visual-viewport-* 变量（来自 useVisualViewport）而非 inset-x-0/100dvh，
+       确保在 SSH 终端撑宽布局视口后，浮窗依然按真实可见视口（手机版）定位和限宽，不会溢出屏幕 -->
+  <Teleport to="body">
+    <div
+      class="bg-overlay flex justify-center items-center z-50 p-4"
+      style="position: fixed;
+             left: var(--visual-viewport-left, 0px);
+             top: var(--visual-viewport-top, 0px);
+             width: var(--visual-viewport-width, 100vw);
+             height: var(--visual-viewport-height, 100dvh);
+             box-sizing: border-box;"
+    > <!-- Overlay -->
+      <div
+        class="bg-background text-foreground p-6 rounded-lg shadow-xl border border-border w-full flex flex-col"
+        style="max-width: min(42rem, 100%);
+               max-height: min(90vh, calc(var(--visual-viewport-height, 100dvh) - 2rem));"
+      > <!-- Form Panel -->
       <h3 class="text-xl font-semibold text-center mb-6 flex-shrink-0">{{ formTitle }}</h3> <!-- Title -->
       <form @submit.prevent="handleSubmit" class="flex-grow overflow-y-auto pr-2 space-y-6"> <!-- Form with scroll and spacing -->
 
@@ -223,7 +239,8 @@ const handleHostIconMouseLeave = () => {
       </div> <!-- End Form Actions -->
 
     </div> <!-- End Form Panel -->
-  </div> <!-- End Overlay -->
+    </div> <!-- End Overlay -->
+  </Teleport>
 </template>
 
 <!-- Scoped styles removed, now using Tailwind utility classes -->

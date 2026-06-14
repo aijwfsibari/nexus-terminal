@@ -86,6 +86,37 @@ export class SftpService {
             console.warn(`[SFTP] 无法为会话 ${sessionId} 初始化 SFTP：状态无效、SSH客户端不存在或 SFTP 已初始化。`);
             return;
         }
+        // +++ 如果开启了 SFTP sudo 提权，走 sudo 模式初始化 +++
+        if (state.sftp_sudo_enabled) {
+            try {
+                console.log(`[SFTP] 会话 ${sessionId} 检测到 sudo 提权已开启，使用 sudo 模式初始化 SFTP...`);
+                const sftpInstance = await this.connectSudoSftp(
+                    state.sshClient,
+                    state.sftp_sudo_password ?? ''
+                );
+                state.sftp = sftpInstance;
+                state.ws.send(JSON.stringify({ type: 'sftp_ready', payload: { connectionId: state.dbConnectionId } }));
+                console.log(`[SFTP] 会话 ${sessionId} sudo 模式 SFTP 初始化成功。`);
+                sftpInstance.on('end', () => {
+                    console.log(`[SFTP] 会话 ${sessionId} 的 sudo SFTP 会话已结束。`);
+                    if (state) state.sftp = undefined;
+                });
+                sftpInstance.on('close', () => {
+                    console.log(`[SFTP] 会话 ${sessionId} 的 sudo SFTP 会话已关闭。`);
+                    if (state) state.sftp = undefined;
+                });
+                sftpInstance.on('error', (sftpErr: Error) => {
+                    console.error(`[SFTP] 会话 ${sessionId} 的 sudo SFTP 会话出错:`, sftpErr);
+                    if (state) state.sftp = undefined;
+                    state?.ws.send(JSON.stringify({ type: 'sftp_error', payload: { connectionId: state.dbConnectionId, message: 'SFTP 会话错误' } }));
+                });
+                return;
+            } catch (sudoErr: any) {
+                console.error(`[SFTP] 会话 ${sessionId} sudo 模式 SFTP 初始化失败:`, sudoErr);
+                state.ws.send(JSON.stringify({ type: 'sftp_error', payload: { connectionId: state.dbConnectionId, message: `SFTP sudo 初始化失败: ${sudoErr.message}` } }));
+                return;
+            }
+        }
         if (!state.sshClient) {
              console.error(`[SFTP] 会话 ${sessionId} 的 SSH 客户端不存在，无法初始化 SFTP。`);
              return;
@@ -138,7 +169,174 @@ export class SftpService {
             }
         });
     }
-
+    /**
+     * 使用 sudo 提权方式建立 SFTP 连接。
+     * 通过 exec 执行 `sudo -S sftp-server`，再手动构造 SFTP 协议封装，
+     * 使 SFTP 会话以 root 身份运行，从而可以访问 /root 等受限目录。
+     */
+    private connectSudoSftp(client: Client, password: string): Promise<SFTPWrapper> {
+        // 从 ssh2 内部加载 SFTP 协议类（不是公开导出，需要从内部路径引入）
+        const { SFTP } = require('ssh2/lib/protocol/SFTP.js');
+        if (!SFTP) {
+            return Promise.reject(new Error('当前环境不支持 SFTP sudo 模式（无法加载 SFTP 协议类）。'));
+        }
+        // 常见的 sftp-server 路径
+        const sftpPaths = [
+            '/usr/lib/openssh/sftp-server',
+            '/usr/libexec/openssh/sftp-server',
+            '/usr/lib/ssh/sftp-server',
+            '/usr/libexec/sftp-server',
+            '/usr/local/libexec/sftp-server',
+            '/usr/local/lib/sftp-server',
+        ];
+        const probeServerPath = async (): Promise<string> => {
+            for (const p of sftpPaths) {
+                try {
+                    await new Promise<void>((resolve, reject) => {
+                        client.exec(`test -x ${p}`, (err, stream) => {
+                            if (err) return reject(err);
+                            stream.on('exit', (code: number) => {
+                                if (code === 0) resolve();
+                                else reject(new Error('Not found'));
+                            });
+                            stream.resume();
+                            stream.stderr.resume();
+                        });
+                    });
+                    return p;
+                } catch {
+                    // 继续探测下一个路径
+                }
+            }
+            console.warn('[SFTP] 未能探测到 sftp-server，使用默认路径 /usr/lib/openssh/sftp-server');
+            return '/usr/lib/openssh/sftp-server';
+        };
+        return new Promise<SFTPWrapper>(async (resolve, reject) => {
+            let serverPath: string;
+            try {
+                serverPath = await probeServerPath();
+            } catch (e: any) {
+                return reject(e);
+            }
+            console.log(`[SFTP] sudo 模式使用 sftp-server: ${serverPath}`);
+            const prompt = 'SUDOPASSWORD:';
+            const readyMarker = 'SFTPREADY';
+            const readyMarkerBuffer = Buffer.from(readyMarker);
+            // 用 printf 打印同步标记，再 exec sftp-server；-S 从 stdin 读密码，自定义 prompt 便于检测
+            const cmd = `sudo -S -p '${prompt}' sh -c 'printf ${readyMarker}; exec ${serverPath} -e'`;
+            console.log(`[SFTP] 执行 sudo 命令: ${cmd}`);
+            // 关闭 pty，保证 SFTP 二进制流干净
+            client.exec(cmd, { pty: false }, (err, stream) => {
+                if (err) return reject(err);
+                let sftpInitialized = false;
+                let sftp: any = null;
+                let settled = false;
+                let stdoutBuffer = Buffer.alloc(0);
+                let stderrBuffer = '';
+                let pendingAfterMarker: Buffer | null = null;
+                let sftpCreated = false;
+                const timeoutMs = 20000;
+                const timeoutId = setTimeout(() => {
+                    if (sftpInitialized || settled) return;
+                    settled = true;
+                    stream.stderr?.removeListener('data', onStderr);
+                    stream.removeListener('data', onStdout);
+                    reject(new Error('SFTP sudo 握手超时。可能原因：(1) 密码错误，(2) sudo 需要 TTY，(3) 用户没有 sudo 权限。'));
+                }, timeoutMs);
+                const finalize = (error: Error | null, result?: any) => {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timeoutId);
+                    stream.stderr?.removeListener('data', onStderr);
+                    stream.removeListener('data', onStdout);
+                    if (error) reject(error);
+                    else resolve(result);
+                };
+                const createSftp = () => {
+                    if (sftpCreated) return;
+                    sftpCreated = true;
+                    try {
+                        const chanInfo = {
+                            type: 'sftp',
+                            incoming: (stream as any).incoming,
+                            outgoing: (stream as any).outgoing,
+                        };
+                        sftp = new SFTP(client, chanInfo, {});
+                        // 把后续通道数据直接交给 SFTP 解析器
+                        if ((client as any)._chanMgr && typeof (stream as any).incoming?.id === 'number') {
+                            (client as any)._chanMgr.update((stream as any).incoming.id, sftp);
+                        }
+                        sftp.on('ready', () => {
+                            sftpInitialized = true;
+                            console.log('[SFTP] sudo 模式 SFTP 协议就绪。');
+                            finalize(null, sftp);
+                        });
+                        sftp.on('error', (e: Error) => {
+                            console.error('[SFTP] sudo 模式 SFTP 协议错误:', e.message);
+                            if (!sftpInitialized) finalize(e);
+                        });
+                        stream.on('end', () => {
+                            try { sftp.push(null); } catch { /* ignore */ }
+                        });
+                    } catch (e: any) {
+                        finalize(e);
+                    }
+                };
+                const initSftp = () => {
+                    if (sftpInitialized) return;
+                    if (!sftpCreated) createSftp();
+                    try {
+                        sftp._init();
+                        if (pendingAfterMarker && pendingAfterMarker.length > 0) {
+                            try { sftp.push(pendingAfterMarker); } catch { /* ignore */ }
+                            pendingAfterMarker = null;
+                        }
+                    } catch (e: any) {
+                        finalize(e);
+                    }
+                };
+                const onStdout = (data: Buffer) => {
+                    const chunk = Buffer.isBuffer(data) ? data : Buffer.from(data);
+                    stdoutBuffer = stdoutBuffer.length > 0 ? Buffer.concat([stdoutBuffer, chunk]) : chunk;
+                    const markerIndex = stdoutBuffer.indexOf(readyMarkerBuffer);
+                    if (markerIndex !== -1) {
+                        const afterMarkerIndex = markerIndex + readyMarkerBuffer.length;
+                        if (afterMarkerIndex < stdoutBuffer.length) {
+                            pendingAfterMarker = stdoutBuffer.subarray(afterMarkerIndex);
+                        }
+                        // 检测到标记，停止监听 stdout，交给 SFTP 解析器
+                        stream.removeListener('data', onStdout);
+                        stdoutBuffer = Buffer.alloc(0);
+                        console.log('[SFTP] 检测到 SFTPREADY，等待流稳定后初始化协议...');
+                        setTimeout(() => initSftp(), 1000);
+                    } else if (stdoutBuffer.length > 256) {
+                        stdoutBuffer = stdoutBuffer.subarray(stdoutBuffer.length - 256);
+                    }
+                };
+                const onStderr = (data: Buffer) => {
+                    stderrBuffer += data.toString();
+                    if (stderrBuffer.includes(prompt)) {
+                        console.log('[SFTP] sudo 请求密码，正在发送...');
+                        stream.write((password || '') + '\n');
+                        stderrBuffer = '';
+                    } else if (stderrBuffer.length > 256) {
+                        stderrBuffer = stderrBuffer.slice(-256);
+                    }
+                };
+                stream.on('data', onStdout);
+                stream.stderr.on('data', onStderr);
+                stream.on('exit', (code: number) => {
+                    console.log(`[SFTP] sudo 流退出，退出码 ${code}`);
+                    if (!sftpInitialized && code !== 0) {
+                        let msg = `SFTP sudo 失败，退出码 ${code}。`;
+                        if (code === 1) msg += ' 密码可能错误或 sudo 权限被拒绝。';
+                        else if (code === 127) msg += ' 远程系统未找到 sftp-server。';
+                        finalize(new Error(msg));
+                    }
+                });
+            });
+        });
+    }
     // --- SFTP 操作方法 ---
 
     /** 读取目录内容 */

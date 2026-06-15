@@ -362,6 +362,7 @@
     "fileManager": {
         "modalTitle": "ファイルマネージャー",
         "actions": {
+            "open": "開く",
             "cancel": "キャンセル",
             "cdToTerminal": "ターミナルのディレクトリを現在のパスに変更",
             "changePermissions": "権限を変更",

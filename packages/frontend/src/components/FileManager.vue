@@ -1021,6 +1021,8 @@ const {
   clipboardState: readonly(clipboardState), // +++ 传递剪贴板状态 (只读) +++
   t,
   // --- 传递回调函数 ---
+  // +++ 打开：复用 handleItemAction（文件夹进入/文件用编辑器打开）+++
+  onOpen: handleItemAction,
   // 修改：确保在调用前检查 currentSftpManager.value
   onRefresh: () => {
       if (currentSftpManager.value) {
@@ -2143,4 +2145,3 @@ const handleOpenEditorClick = () => {
 <style scoped>
 /* Scoped styles removed for Tailwind CSS refactoring */
 </style>
-

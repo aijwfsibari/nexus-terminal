@@ -33,6 +33,7 @@ export interface UseFileManagerContextMenuOptions {
   clipboardState: Ref<Readonly<ClipboardState>>; // +++ 剪贴板状态 +++
   t: ReturnType<typeof useI18n>['t']; // 使用 useI18n 获取 t 的类型
   // --- 回调函数 ---
+  onOpen: (item: FileListItem) => void; // +++ 打开回调（文件夹进入/文件用编辑器打开）+++
   onRefresh: () => void;
   onUpload: () => void;
   onDownload: (items: FileListItem[]) => void; // 文件下载回调
@@ -69,6 +70,7 @@ export function useFileManagerContextMenu(options: UseFileManagerContextMenuOpti
     isSftpReady,
     clipboardState, // +++ 解构剪贴板状态 +++
     t,
+    onOpen, // +++ 解构打开回调 +++
     onRefresh,
     onUpload,
     onDownload,
@@ -168,6 +170,10 @@ export function useFileManagerContextMenu(options: UseFileManagerContextMenuOpti
     } else if (targetItem && targetItem.filename !== '..') {
         // Single item (not '..') menu
         menu = [];
+
+        // +++ 打开：文件夹进入该目录，文件用编辑器打开 +++
+        menu.push({ label: t('fileManager.actions.open', 'Open'), action: () => onOpen(targetItem), disabled: !(isConnected.value && isSftpReady.value) });
+        menu.push({ label: '', action: () => {}, disabled: true, separator: true }); // Separator
 
         // --- 修改：区分文件和文件夹下载 ---
         if (targetItem.attrs.isFile) {

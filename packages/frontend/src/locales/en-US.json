@@ -424,6 +424,7 @@
     "emptyDirectory": "Directory is empty",
     "uploadTasks": "Upload Tasks",
     "actions": {
+      "open": "Open",
       "refresh": "Refresh",
       "parentDirectory": "Parent Directory",
       "uploadFile": "Upload File",

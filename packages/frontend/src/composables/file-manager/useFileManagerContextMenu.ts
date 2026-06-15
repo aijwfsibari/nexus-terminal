@@ -95,6 +95,13 @@ export function useFileManagerContextMenu(options: UseFileManagerContextMenuOpti
 
   const showContextMenu = (event: MouseEvent, item?: FileListItem) => {
     event.preventDefault();
+    // 确保上一次菜单状态完全清理，防止监听器堆积
+    if (contextMenuVisible.value) {
+      contextMenuVisible.value = false;
+      contextMenuItems.value = [];
+      contextTargetItem.value = null;
+      document.removeEventListener('click', hideContextMenu, { capture: true });
+    }
     const targetItem = item || null;
 
     // Adjust selection based on right-click target (逻辑保持不变)
@@ -260,47 +267,15 @@ export function useFileManagerContextMenu(options: UseFileManagerContextMenuOpti
     contextMenuPosition.value = { x: event.clientX, y: event.clientY };
     contextMenuVisible.value = true; // Make menu visible so we can measure it
 
-    // Use nextTick to allow the DOM to update and the menu to render
+    // 注意：菜单的边界位置调整已由 FileManagerContextMenu.vue 内部的 watch
+    // （使用真正的 div ref 调用 getBoundingClientRect）处理，这里不再重复。
+    // 之前这里通过组件实例的 $el 调用 getBoundingClientRect，但该组件是多根
+    // 组件，$el 指向 fragment 的文本锚点节点（没有 getBoundingClientRect），
+    // 在 nextTick（Vue 调度刷新的微任务）中抛错会破坏调度器状态，导致移动端
+    // Chrome/Edge 第二次长按后整页无法点击。这里仅注册一次性的关闭监听。
     nextTick(() => {
-        // Access the DOM element via $el from the component instance ref
-        const menuElement = contextMenuRef.value?.$el as HTMLDivElement | undefined;
-        if (menuElement && contextMenuVisible.value) {
-            // const menuElement = contextMenuRef.value; // Old way
-            const menuRect = menuElement.getBoundingClientRect(); // Now should work
-            const menuWidth = menuRect.width;
-            const menuHeight = menuRect.height;
-
-            let finalX = contextMenuPosition.value.x;
-            let finalY = contextMenuPosition.value.y;
-
-            // Adjust horizontally if needed
-            if (finalX + menuWidth > window.innerWidth) {
-                finalX = window.innerWidth - menuWidth - 5;
-            }
-
-            // Adjust vertically if needed
-            if (finalY + menuHeight > window.innerHeight) {
-                finalY = window.innerHeight - menuHeight - 5;
-            }
-
-            // Ensure menu doesn't go off-screen top or left
-            finalX = Math.max(5, finalX);
-            finalY = Math.max(5, finalY);
-
-            // Update the position state if adjustments were made
-            if (finalX !== contextMenuPosition.value.x || finalY !== contextMenuPosition.value.y) {
-                 console.log(`[useFileManagerContextMenu] Adjusting context menu position: (${contextMenuPosition.value.x}, ${contextMenuPosition.value.y}) -> (${finalX}, ${finalY})`);
-                 contextMenuPosition.value = { x: finalX, y: finalY };
-            }
-
-            // Add global listener to hide menu *after* positioning
-            document.removeEventListener('click', hideContextMenu, { capture: true });
-            document.addEventListener('click', hideContextMenu, { capture: true, once: true });
-        } else {
-             // Fallback listener if measurement fails
-             document.removeEventListener('click', hideContextMenu, { capture: true });
-             document.addEventListener('click', hideContextMenu, { capture: true, once: true });
-        }
+        document.removeEventListener('click', hideContextMenu, { capture: true });
+        document.addEventListener('click', hideContextMenu, { capture: true, once: true });
     });
   };
 

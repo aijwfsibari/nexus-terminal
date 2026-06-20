@@ -1,6 +1,6 @@
 services:
   frontend:
-    image: heavrnl/nexus-terminal-frontend:latest
+    image: ghcr.io/aijwfsibari/nexus-terminal-frontend:latest
     container_name: nexus-terminal-frontend
     ports:
       - "18111:80"
@@ -9,9 +9,10 @@ services:
       - remote-gateway
     networks:
       - nexus-terminal-network
+    restart: unless-stopped
 
   backend:
-    image: heavrnl/nexus-terminal-backend:latest
+    image: ghcr.io/aijwfsibari/nexus-terminal-backend:latest
     container_name: nexus-terminal-backend
     env_file:
       - .env
@@ -22,9 +23,10 @@ services:
       - ./data:/app/data
     networks:
       - nexus-terminal-network
+    restart: unless-stopped
 
   remote-gateway:
-    image: heavrnl/nexus-terminal-remote-gateway:latest
+    image: ghcr.io/aijwfsibari/nexus-terminal-remote-gateway:latest
     container_name: nexus-terminal-remote-gateway
     environment:
       GUACD_HOST: guacd
@@ -39,6 +41,7 @@ services:
     depends_on:
       - guacd
       - backend
+    restart: unless-stopped
 
   guacd:
     image: guacamole/guacd:latest
@@ -54,5 +57,5 @@ networks:
     enable_ipv6: true
     ipam:
       config:
-        - subnet: fd01::/80    
-          gateway: fd01::1    
+        - subnet: fd01::/80
+          gateway: fd01::1
